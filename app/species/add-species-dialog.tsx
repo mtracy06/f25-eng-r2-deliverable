@@ -44,7 +44,8 @@ const speciesSchema = z.object({
     .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
 });
 
-interface FormData extends z.infer<typeof speciesSchema> {}
+// prefer type alias over empty interface extension (eslint)
+type FormData = z.infer<typeof speciesSchema>;
 
 const defaultValues: Partial<FormData> = {
   scientific_name: "",
@@ -55,35 +56,35 @@ const defaultValues: Partial<FormData> = {
   description: null,
 };
 
-interface WikipediaSearchResult {
-  title: string;
-}
+type WikipediaSearchResult = { title: string };
 
-interface WikipediaSearchResponse {
+type WikipediaSearchResponse = {
   query: {
     search: WikipediaSearchResult[];
   };
-}
+};
 
-interface WikipediaSummaryResponse {
+type WikipediaSummaryResponse = {
   title?: string;
   extract?: string;
   thumbnail?: {
     source: string;
   };
   wikibase_item?: string;
-}
+};
 
-interface WikidataEntityResponse {
-  entities?: {
-    [id: string]: {
+// prefer Record<> over index signatures (eslint)
+type WikidataEntityResponse = {
+  entities?: Record<
+    string,
+    {
       claims?: {
         P225?: { mainsnak?: { datavalue?: { value?: string } } }[];
       };
-      labels?: { [lang: string]: { value?: string } };
-    };
-  };
-}
+      labels?: Record<string, { value?: string }>;
+    }
+  >;
+};
 
 export default function AddSpeciesDialog({
   userId,
@@ -217,7 +218,6 @@ export default function AddSpeciesDialog({
     resetForm();
     setOpen(false);
 
-    // Prefer callback to a full page reload
     if (onSpeciesAdded) {
       await onSpeciesAdded();
     } else if (typeof window !== "undefined") {
