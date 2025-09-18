@@ -44,37 +44,30 @@ const speciesSchema = z.object({
     .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
 });
 
-// prefer type alias over empty interface extension (eslint)
-type FormData = z.infer<typeof speciesSchema>;
+type FormData = z.infer<typeof speciesSchema>; // (Not an object literal; OK to keep as a type alias)
 
-const defaultValues: Partial<FormData> = {
-  scientific_name: "",
-  common_name: null,
-  kingdom: "Animalia",
-  total_population: null,
-  image: null,
-  description: null,
-};
+/** ---- Wikipedia/Wikidata response shapes (interfaces + Record to satisfy lint) ---- */
 
-type WikipediaSearchResult = { title: string };
+interface WikipediaSearchResult {
+  title: string;
+}
 
-type WikipediaSearchResponse = {
+interface WikipediaSearchResponse {
   query: {
     search: WikipediaSearchResult[];
   };
-};
+}
 
-type WikipediaSummaryResponse = {
+interface WikipediaSummaryResponse {
   title?: string;
   extract?: string;
   thumbnail?: {
     source: string;
   };
   wikibase_item?: string;
-};
+}
 
-// prefer Record<> over index signatures (eslint)
-type WikidataEntityResponse = {
+interface WikidataEntityResponse {
   entities?: Record<
     string,
     {
@@ -84,6 +77,17 @@ type WikidataEntityResponse = {
       labels?: Record<string, { value?: string }>;
     }
   >;
+}
+
+/** ---------------------------------------------------------------------------------- */
+
+const defaultValues: Partial<FormData> = {
+  scientific_name: "",
+  common_name: null,
+  kingdom: "Animalia",
+  total_population: null,
+  image: null,
+  description: null,
 };
 
 export default function AddSpeciesDialog({
@@ -218,6 +222,7 @@ export default function AddSpeciesDialog({
     resetForm();
     setOpen(false);
 
+    // Prefer callback to a full page reload
     if (onSpeciesAdded) {
       await onSpeciesAdded();
     } else if (typeof window !== "undefined") {
@@ -244,7 +249,7 @@ export default function AddSpeciesDialog({
       <DialogContent className="max-h-screen overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Add Species</DialogTitle>
-          <DialogDescription>Add a new species here.</DialogDescription>
+        <DialogDescription>Add a new species here.</DialogDescription>
         </DialogHeader>
 
         <div className="mb-4 flex gap-2">
