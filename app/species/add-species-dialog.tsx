@@ -85,7 +85,13 @@ interface WikidataEntityResponse {
   };
 }
 
-export default function AddSpeciesDialog({ userId }: { userId: string }) {
+export default function AddSpeciesDialog({
+  userId,
+  onSpeciesAdded,
+}: {
+  userId: string;
+  onSpeciesAdded?: () => void | Promise<void>;
+}) {
   const [open, setOpen] = useState<boolean>(false);
   const [wikipediaQuery, setWikipediaQuery] = useState<string>("");
 
@@ -115,7 +121,11 @@ export default function AddSpeciesDialog({ userId }: { userId: string }) {
       const searchData = (await searchRes.json()) as WikipediaSearchResponse;
 
       if (!searchData?.query?.search?.length) {
-        toast({ title: "No Article Found", description: "No Wikipedia article matches your search term.", variant: "destructive" });
+        toast({
+          title: "No Article Found",
+          description: "No Wikipedia article matches your search term.",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -125,7 +135,11 @@ export default function AddSpeciesDialog({ userId }: { userId: string }) {
         `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(articleTitle)}`
       );
       if (!summaryRes.ok) {
-        toast({ title: "Error Fetching Article", description: "Could not retrieve the article summary.", variant: "destructive" });
+        toast({
+          title: "Error Fetching Article",
+          description: "Could not retrieve the article summary.",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -202,7 +216,13 @@ export default function AddSpeciesDialog({ userId }: { userId: string }) {
 
     resetForm();
     setOpen(false);
-    if (typeof window !== "undefined") window.location.reload();
+
+    // Prefer callback to a full page reload
+    if (onSpeciesAdded) {
+      await onSpeciesAdded();
+    } else if (typeof window !== "undefined") {
+      window.location.reload();
+    }
 
     toast({ title: "New species added!", description: "Successfully added " + input.scientific_name + "." });
   };
@@ -327,11 +347,7 @@ export default function AddSpeciesDialog({ userId }: { userId: string }) {
                     <FormItem>
                       <FormLabel>Image URL</FormLabel>
                       <FormControl>
-                        <Input
-                          value={value ?? ""}
-                          placeholder="https://upload.wikimedia.org/..."
-                          {...rest}
-                        />
+                        <Input value={value ?? ""} placeholder="https://upload.wikimedia.org/..." {...rest} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
