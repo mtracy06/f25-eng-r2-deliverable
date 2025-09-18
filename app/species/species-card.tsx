@@ -26,7 +26,7 @@ export default function SpeciesCard({
     <div className="m-4 w-72 min-w-72 flex-none rounded border-2 p-3 shadow">
       {species.image && (
         <div className="relative h-40 w-full">
-          <Image src={species.image} alt={species.scientific_name ?? "species image"} fill style={{ objectFit: "cover" }} />
+          <Image src={species.image} alt={species.scientific_name} fill style={{ objectFit: "cover" }} />
         </div>
       )}
       <h3 className="mt-3 text-2xl font-semibold">{species.scientific_name}</h3>
@@ -44,7 +44,7 @@ export default function SpeciesCard({
           </DialogHeader>
           {species.image && (
             <div className="relative h-40 w-full">
-              <Image src={species.image} alt={species.scientific_name ?? "species image"} fill style={{ objectFit: "cover" }} />
+              <Image src={species.image} alt={species.scientific_name} fill style={{ objectFit: "cover" }} />
             </div>
           )}
           <h4 className="text-lg font-light italic">{species.common_name}</h4>

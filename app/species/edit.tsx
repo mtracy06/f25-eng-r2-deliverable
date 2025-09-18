@@ -17,13 +17,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import { createBrowserSupabaseClient } from "@/lib/client-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, useState, type BaseSyntheticEvent } from "react";
+import { useEffect, useState, type BaseSyntheticEvent } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import type { Database } from "@/lib/schema";
 
 const kingdoms = z.enum(["Animalia", "Plantae", "Fungi", "Protista", "Archaea", "Bacteria"]);
-type Kingdom = z.infer<typeof kingdoms>;
 
 const speciesSchema = z.object({
   scientific_name: z.string().trim().min(1, "Scientific Name is required"),
@@ -32,8 +31,8 @@ const speciesSchema = z.object({
   total_population: z
     .union([z.string(), z.number()])
     .nullable()
-    .transform((val) => (val === "" || val == null ? "" : Number(val)))
-    .refine((val) => val === "" || (typeof val === "number" && Number.isFinite(val) && val > 0), {
+    .transform((val) => (val === "" || val === null ? "" : Number(val)))
+    .refine((val) => val === "" || (typeof val === "number" && val > 0), {
       message: "Total Population must be a positive number",
     }),
   image: z.string().url().nullable().transform((val) => (val?.trim() ? val.trim() : "")),
@@ -43,64 +42,77 @@ const speciesSchema = z.object({
 type FormData = z.infer<typeof speciesSchema>;
 type Species = Database["public"]["Tables"]["species"]["Row"];
 
-export default function EditSpeciesDialog({ userId, species }: { userId: string; species: Species }) {
+export default function EditSpeciesDialog({
+  userId,
+  species,
+  onUpdated,
+}: {
+  userId: string;
+  species: Species;
+  onUpdated?: () => void;
+}) {
   const [open, setOpen] = useState<boolean>(false);
-
-  const initialValues: FormData = useMemo(
-    () => ({
-      scientific_name: species.scientific_name ?? "",
-      common_name: species.common_name ?? "",
-      kingdom: (species.kingdom as Kingdom) ?? "Animalia",
-      total_population: species.total_population ?? "",
-      image: species.image ?? "",
-      description: species.description ?? "",
-    }),
-    [species]
-  );
 
   const form = useForm<FormData>({
     resolver: zodResolver(speciesSchema),
-    defaultValues: initialValues,
+    defaultValues: {
+      scientific_name: species.scientific_name ?? "",
+      common_name: species.common_name ?? "",
+      kingdom: species.kingdom ?? "Animalia",
+      total_population: species.total_population ?? "",
+      image: species.image ?? "",
+      description: species.description ?? "",
+    },
     mode: "onChange",
   });
 
-  if (userId !== species.author) {
-    return null;
-  }
+  if (userId !== species.author) return null;
 
   useEffect(() => {
-    if (open) form.reset(initialValues);
-  }, [open, initialValues, form]);
-
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) form.reset(initialValues);
-  };
+    if (!open) {
+      form.reset({
+        scientific_name: species.scientific_name ?? "",
+        common_name: species.common_name ?? "",
+        kingdom: species.kingdom ?? "Animalia",
+        total_population: species.total_population ?? "",
+        image: species.image ?? "",
+        description: species.description ?? "",
+      });
+    }
+  }, [open, form, species]);
 
   const onSubmit = async (input: FormData) => {
     const supabase = createBrowserSupabaseClient();
-    const sanitizedInput = {
-      scientific_name: input.scientific_name,
-      common_name: input.common_name === "" ? null : input.common_name,
-      kingdom: input.kingdom,
+    const sanitized = {
+      ...input,
       total_population: input.total_population === "" ? null : input.total_population,
-      image: input.image === "" ? null : input.image,
-      description: input.description === "" ? null : input.description,
     };
-    const { error } = await supabase.from("species").update(sanitizedInput).eq("id", species.id).eq("author", userId);
+
+    const { error } = await supabase
+      .from("species")
+      .update(sanitized)
+      .eq("id", species.id)
+      .eq("author", userId);
+
     if (error) {
       toast({ title: "Error updating species", description: error.message, variant: "destructive" });
       return;
     }
+
     setOpen(false);
-    window.location.reload();
+
+    if (onUpdated) {
+      onUpdated();
+    } else {
+    
+      if (typeof window !== "undefined") window.location.reload();
+    }
+
     toast({ title: "Species updated!", description: `Successfully updated ${input.scientific_name}.` });
   };
 
-  const numberValue = (v: string | number | null | undefined) => (v === "" || v == null ? "" : String(v));
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="secondary">Edit</Button>
       </DialogTrigger>
@@ -173,8 +185,9 @@ export default function EditSpeciesDialog({ userId, species }: { userId: string;
                     <FormControl>
                       <Input
                         type="number"
-                        value={numberValue(field.value)}
-                        onChange={(e) => field.onChange(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+                        {...field}
+                        value={field.value === "" ? "" : Number(field.value)}
+                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : "")}
                       />
                     </FormControl>
                     <FormMessage />
@@ -212,7 +225,7 @@ export default function EditSpeciesDialog({ userId, species }: { userId: string;
                   Save Changes
                 </Button>
                 <DialogClose asChild>
-                  <Button type="button" variant="secondary" onClick={() => form.reset(initialValues)}>
+                  <Button type="button" variant="secondary">
                     Cancel
                   </Button>
                 </DialogClose>

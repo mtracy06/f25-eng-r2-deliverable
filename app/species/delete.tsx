@@ -21,7 +21,6 @@ export default function DeleteSpeciesButton({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-
   if (userId !== species.author) return null;
 
   const handleDelete = async () => {
@@ -39,7 +38,12 @@ export default function DeleteSpeciesButton({
     }
 
     toast({ title: "Species Deleted", description: `${species.scientific_name} has been removed.` });
-    onDeleted?.(); 
+
+    if (onDeleted) {
+      onDeleted();
+    } else if (typeof window !== "undefined") {
+      window.location.reload();
+    }
   };
 
   return (
@@ -53,9 +57,7 @@ export default function DeleteSpeciesButton({
           <DialogHeader>
             <DialogTitle>Confirm Deletion</DialogTitle>
           </DialogHeader>
-          <p>
-            Are you sure you want to delete &quot;{species.scientific_name}&quot;? This action cannot be undone.
-          </p>
+          <p>Are you sure you want to delete &quot;{species.scientific_name}&quot;? This action cannot be undone.</p>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={loading}>
               Cancel
