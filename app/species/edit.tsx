@@ -66,8 +66,6 @@ export default function EditSpeciesDialog({
     mode: "onChange",
   });
 
-  if (userId !== species.author) return null;
-
   useEffect(() => {
     if (!open) {
       form.reset({
@@ -80,6 +78,8 @@ export default function EditSpeciesDialog({
       });
     }
   }, [open, form, species]);
+
+  if (userId !== species.author) return null;
 
   const onSubmit = async (input: FormData) => {
     const supabase = createBrowserSupabaseClient();
@@ -101,12 +101,8 @@ export default function EditSpeciesDialog({
 
     setOpen(false);
 
-    if (onUpdated) {
-      onUpdated();
-    } else {
-    
-      if (typeof window !== "undefined") window.location.reload();
-    }
+    if (onUpdated) onUpdated();
+    else if (typeof window !== "undefined") window.location.reload();
 
     toast({ title: "Species updated!", description: `Successfully updated ${input.scientific_name}.` });
   };

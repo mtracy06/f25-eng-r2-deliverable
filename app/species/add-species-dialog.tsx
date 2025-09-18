@@ -1,3 +1,4 @@
+// app/species/add-species-dialog.tsx
 "use client";
 
 import { Icons } from "@/components/icons";
@@ -11,23 +12,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import { createBrowserSupabaseClient } from "@/lib/client-utils";
@@ -57,7 +44,7 @@ const speciesSchema = z.object({
     .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
 });
 
-type FormData = z.infer<typeof speciesSchema>;
+interface FormData extends z.infer<typeof speciesSchema> {}
 
 const defaultValues: Partial<FormData> = {
   scientific_name: "",
@@ -71,21 +58,36 @@ const defaultValues: Partial<FormData> = {
 interface WikipediaSearchResult {
   title: string;
 }
+
 interface WikipediaSearchResponse {
-  query?: { search?: WikipediaSearchResult[] };
+  query: {
+    search: WikipediaSearchResult[];
+  };
 }
+
 interface WikipediaSummaryResponse {
   title?: string;
-  displaytitle?: string;
   extract?: string;
-  thumbnail?: { source?: string };
+  thumbnail?: {
+    source: string;
+  };
+  wikibase_item?: string;
 }
 
-type AddSpeciesDialogProps = { userId: string; onSpeciesAdded?: () => void };
+interface WikidataEntityResponse {
+  entities?: {
+    [id: string]: {
+      claims?: {
+        P225?: { mainsnak?: { datavalue?: { value?: string } } }[];
+      };
+      labels?: { [lang: string]: { value?: string } };
+    };
+  };
+}
 
-export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [wikipediaQuery, setWikipediaQuery] = useState("");
+export default function AddSpeciesDialog({ userId }: { userId: string }) {
+  const [open, setOpen] = useState<boolean>(false);
+  const [wikipediaQuery, setWikipediaQuery] = useState<string>("");
 
   const form = useForm<FormData>({
     resolver: zodResolver(speciesSchema),
@@ -98,32 +100,26 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
     setWikipediaQuery("");
   };
 
-  const handleOpenChange = (next: boolean) => {
-    if (!next) resetForm();
-    setOpen(next);
-  };
-
-  const cleanTitle = (t: string) =>
-    t.replace(/\s*\([^)]*\)\s*$/, "").replace(/<[^>]+>/g, "").trim();
-
   const handleWikipediaSearch = async (): Promise<void> => {
-    const q = wikipediaQuery.trim();
-    if (!q) {
-      toast({ title: "Empty Search", description: "Enter a species name to search.", variant: "destructive" });
+    if (!wikipediaQuery.trim()) {
+      toast({ title: "Empty Search", description: "Please enter a species name to search.", variant: "destructive" });
       return;
     }
+
     try {
       const searchRes = await fetch(
         `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-          q
+          wikipediaQuery
         )}&format=json&origin=*`
       );
       const searchData = (await searchRes.json()) as WikipediaSearchResponse;
-      const articleTitle = searchData.query?.search?.[0]?.title;
-      if (!articleTitle) {
-        toast({ title: "No Article Found", description: "No Wikipedia article matches your search.", variant: "destructive" });
+
+      if (!searchData?.query?.search?.length) {
+        toast({ title: "No Article Found", description: "No Wikipedia article matches your search term.", variant: "destructive" });
         return;
       }
+
+      const articleTitle = searchData.query.search[0]!.title;
 
       const summaryRes = await fetch(
         `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(articleTitle)}`
@@ -132,19 +128,56 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
         toast({ title: "Error Fetching Article", description: "Could not retrieve the article summary.", variant: "destructive" });
         return;
       }
+
       const summaryData = (await summaryRes.json()) as WikipediaSummaryResponse;
 
       const articleDescription = summaryData.extract ?? "";
       const articleImage = summaryData.thumbnail?.source ?? "";
-      const commonTitle = cleanTitle(summaryData.displaytitle ?? summaryData.title ?? articleTitle);
+      if (articleDescription) form.setValue("description", articleDescription);
+      if (articleImage) form.setValue("image", articleImage);
 
-      if (commonTitle) form.setValue("common_name", commonTitle, { shouldValidate: true, shouldDirty: true });
-      form.setValue("description", articleDescription || "", { shouldValidate: true, shouldDirty: true });
-      form.setValue("image", articleImage || "", { shouldValidate: true, shouldDirty: true });
+      if (summaryData.title) {
+        form.setValue("common_name", summaryData.title);
+      }
 
-      toast({ title: "Article Found", description: "Autofilled common name, description, and image." });
+      let scientificFromWikidata: string | undefined;
+      if (summaryData.wikibase_item) {
+        const wdRes = await fetch(
+          `https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(summaryData.wikibase_item)}.json`
+        );
+        if (wdRes.ok) {
+          const wd = (await wdRes.json()) as WikidataEntityResponse;
+          const ent = wd.entities?.[summaryData.wikibase_item];
+          const claims = ent?.claims?.P225;
+          const val = claims?.[0]?.mainsnak?.datavalue?.value;
+          if (typeof val === "string" && val.trim()) scientificFromWikidata = val.trim();
+        }
+        if (!scientificFromWikidata) {
+          const wd2 = await fetch(
+            `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(
+              summaryData.wikibase_item
+            )}&format=json&origin=*`
+          );
+          if (wd2.ok) {
+            const wd = (await wd2.json()) as WikidataEntityResponse;
+            const ent = wd.entities?.[summaryData.wikibase_item];
+            const labelEn = ent?.labels?.en?.value;
+            if (labelEn && /[A-Z][a-z]+ [a-z]+/.test(labelEn)) scientificFromWikidata = labelEn;
+          }
+        }
+      }
+
+      if (scientificFromWikidata) {
+        form.setValue("scientific_name", scientificFromWikidata);
+      }
+
+      toast({ title: "Article Found", description: "Fields have been autofilled." });
     } catch {
-      toast({ title: "Search Error", description: "Error searching Wikipedia. Try again.", variant: "destructive" });
+      toast({
+        title: "Search Error",
+        description: "An error occurred while searching Wikipedia. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -161,18 +194,27 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
         image: input.image,
       },
     ]);
+
     if (error) {
       toast({ title: "Something went wrong.", description: error.message, variant: "destructive" });
       return;
     }
+
     resetForm();
     setOpen(false);
-    onSpeciesAdded?.();
+    if (typeof window !== "undefined") window.location.reload();
+
     toast({ title: "New species added!", description: "Successfully added " + input.scientific_name + "." });
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) resetForm();
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="secondary">
           <Icons.add className="mr-3 h-5 w-5" />
@@ -182,7 +224,7 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
       <DialogContent className="max-h-screen overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Add Species</DialogTitle>
-          <DialogDescription>Prefill fields from Wikipedia or enter manually.</DialogDescription>
+          <DialogDescription>Add a new species here.</DialogDescription>
         </DialogHeader>
 
         <div className="mb-4 flex gap-2">
@@ -242,8 +284,8 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
                       </FormControl>
                       <SelectContent>
                         <SelectGroup>
-                          {kingdoms.options.map((k) => (
-                            <SelectItem key={k} value={k}>
+                          {kingdoms.options.map((k, i) => (
+                            <SelectItem key={i} value={k}>
                               {k}
                             </SelectItem>
                           ))}
@@ -268,7 +310,7 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
                           value={value ?? ""}
                           placeholder="300000"
                           {...rest}
-                          onChange={(event) => field.onChange(event.target.value ? +event.target.value : null)}
+                          onChange={(event) => field.onChange(+event.target.value)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -285,7 +327,11 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
                     <FormItem>
                       <FormLabel>Image URL</FormLabel>
                       <FormControl>
-                        <Input value={value ?? ""} placeholder="https://upload.wikimedia.org/..." {...rest} />
+                        <Input
+                          value={value ?? ""}
+                          placeholder="https://upload.wikimedia.org/..."
+                          {...rest}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -301,7 +347,7 @@ export default function AddSpeciesDialog({ userId, onSpeciesAdded }: AddSpeciesD
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Textarea value={value ?? ""} placeholder="Short description of the species" {...rest} />
+                        <Textarea value={value ?? ""} placeholder="Description..." {...rest} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
